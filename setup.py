@@ -11,7 +11,7 @@ setuptools.setup(
     description="A package of custom pyspark.ml transformers",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/pypa/sampleproject",
+    url="https://github.com/mike-dobbles/community-tranformers",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
