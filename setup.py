@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="community-transformers",
-    version="0.0.2",
+    version="0.0.1",
     author="Mike Dobbles",
     author_email="mdobbles@yahoo.com",
     description="A package of custom pyspark.ml transformers",
