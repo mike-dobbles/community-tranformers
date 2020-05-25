@@ -2,7 +2,7 @@ import pytest
 import transformers.t as ct
 from pyspark.sql import SparkSession
 from mlflow.spark import save_model, load_model
-from pyspark.ml import Pipeline, PipelineModel
+from pyspark.ml import Pipeline
 
 # This runs before the tests and creates objects that can be used by the tests
 @pytest.fixture
