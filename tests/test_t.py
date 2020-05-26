@@ -198,3 +198,87 @@ def test__SentenceSplitter(simple_test_dataframe):
 
     # If we make it this far without crashing we pass (plus I'm visually reviewing results)
     assert True
+
+def test__LevenshteinSubstituter(numbers_dataframe):
+
+    # Create the transformer
+    tokenizer = ct.NLTKWordPunctTokenizer(inputCol="text", outputCol="tokens")
+
+    # Create the transformer
+    tokenMatchers= ['two1',
+                    'four2',
+                    'nineee']
+    toksub = ct.LevenshteinSubstituter(inputCol="tokens", outputCol="swapped_tokens", tokenMatchers=tokenMatchers, levenshteinThresh=1)
+
+    # Create a pipeline from the transformer
+    pipeline = Pipeline(stages=[tokenizer, toksub])
+
+
+    # fit the test data (which also builds the pipeline)
+    model = pipeline.fit(numbers_dataframe)
+
+    # Test the pipeline
+    df_original_transformed = model.transform(numbers_dataframe)
+
+    # Delete any previously save model (if it exists)
+    # (There may be a more elegant way to do this)
+    if os.path.exists("unit_test_model"):
+        os.system("rm -rf unit_test_model")
+
+    # Log the model and performance
+    save_model(model, "unit_test_model")
+    retrieved_model = load_model("unit_test_model")
+    df_retreived_transformed = retrieved_model.transform(numbers_dataframe)
+
+    # Assert the retrieved model give the same results as the saved model
+    rows_in_common = df_original_transformed.intersect(df_retreived_transformed).count()
+    assert (df_original_transformed.count() == rows_in_common)
+
+    # Print results for visual inspection
+    print("\n")
+    print("test__LevenshteinSubstituter: two and four shold be substituted and nine should not")
+    df_retreived_transformed.show(truncate=False)
+
+    # If we make it this far without crashing we pass (plus I'm visually reviewing results)
+    assert True
+
+def test__GoWordFilter(numbers_dataframe):
+
+    # Create the transformer
+    tokenizer = ct.NLTKWordPunctTokenizer(inputCol="text", outputCol="tokens")
+
+    # Create the transformer
+    goWords= ['two','four','eight','nine']
+    toksub = ct.GoWordFilter(inputCol="tokens", outputCol="go_word_filtered_tokens", goWords=goWords)
+
+    # Create a pipeline from the transformer
+    pipeline = Pipeline(stages=[tokenizer, toksub])
+
+
+    # fit the test data (which also builds the pipeline)
+    model = pipeline.fit(numbers_dataframe)
+
+    # Test the pipeline
+    df_original_transformed = model.transform(numbers_dataframe)
+
+    # Delete any previously save model (if it exists)
+    # (There may be a more elegant way to do this)
+    if os.path.exists("unit_test_model"):
+        os.system("rm -rf unit_test_model")
+
+    # Log the model and performance
+    save_model(model, "unit_test_model")
+    retrieved_model = load_model("unit_test_model")
+    df_retreived_transformed = retrieved_model.transform(numbers_dataframe)
+
+    # Assert the retrieved model give the same results as the saved model
+    rows_in_common = df_original_transformed.intersect(df_retreived_transformed).count()
+    assert (df_original_transformed.count() == rows_in_common)
+
+    # Print results for visual inspection
+    print("\n")
+    print("test__GoWordFilter: two, four, eight, nine should be the only tokesn left")
+    df_retreived_transformed.show(truncate=False)
+
+    # If we make it this far without crashing we pass (plus I'm visually reviewing results)
+    assert True

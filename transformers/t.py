@@ -352,3 +352,61 @@ class SentenceSplitter(Transformer, HasInputCol, HasOutputCol, DefaultParamsRead
         out_col = self.getOutputCol()
 
         return dataset.withColumn(out_col, F.explode(text2sents(in_col)))
+
+class GoWordFilter(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, DefaultParamsWritable,
+                       MLReadable, MLWritable):
+    """This class expects the input column to have an array of string tokens.  It searches those tokens one by one
+    and replaces them with the substitutions if a match is found."""
+
+    tokenMatchers = Param(Params._dummy(), "goWords", "goWords",
+                          typeConverter=TypeConverters.toListString)
+
+    @keyword_only
+    def __init__(self, inputCol=None, outputCol=None, goWords=None):
+        module = __import__("__main__")
+        setattr(module, 'TokenSubstituter', TokenSubstituter)
+        super(GoWordFilter, self).__init__()
+        self.goWords = Param(self, "goWords", "")
+        self._setDefault(goWords=[])
+        kwargs = self._input_kwargs
+        self.setParams(**kwargs)
+
+    @keyword_only
+    def setParams(self, inputCol=None, outputCol=None, goWords=None):
+        kwargs = self._input_kwargs
+        return self._set(**kwargs)
+
+    def setGoWords(self, value):
+        self._paramMap[self.goWords] = value
+        return self
+
+    def getGoWords(self):
+        return self.getOrDefault(self.goWords)
+
+
+    def _transform(self, dataset):
+        goWords = self.getGoWords()
+
+
+        # user defined function to loop through each of the substitutions and apply
+        # them to the passed text
+        t = ArrayType(StringType())
+        def f(original_token_array):
+            # Cycle through the tokens in the passed column cell one by one
+            # If it matches a token in the tokenMatchers array, then swap on that token,
+            # otherwise, leave it alone
+            returned_token_array = []
+            for tok in original_token_array:
+                # Only keep tokens that are in the GoWords list
+                if tok in goWords:
+                    returned_token_array.append(tok)
+
+            return returned_token_array
+
+        # Select the input column
+        in_col = dataset[self.getInputCol()]
+
+        # Get the name of the output column
+        out_col = self.getOutputCol()
+
+        return dataset.withColumn(out_col, udf(f, t)(in_col))
