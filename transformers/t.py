@@ -1,4 +1,4 @@
-#import nltk
+# import nltk
 from nltk.tokenize import sent_tokenize, wordpunct_tokenize
 from pyspark import keyword_only  ## < 2.0 -> pyspark.ml.util.keyword_only
 from pyspark.ml import Transformer
@@ -10,10 +10,12 @@ from pyspark.sql.types import ArrayType, StringType
 import re
 from pyspark.sql import functions as F
 
+
 # Credits https://stackoverflow.com/a/52467470
 # by https://stackoverflow.com/users/234944/benjamin-manns
 
-class NLTKWordPunctTokenizer(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, DefaultParamsWritable, MLReadable, MLWritable):
+class NLTKWordPunctTokenizer(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, DefaultParamsWritable,
+                             MLReadable, MLWritable):
     """This class uses nltk.tokenize.wordpunct_tokenize to generate an output column tranformation of a spark dataframe."""
 
     stopwords = Param(Params._dummy(), "stopwords", "stopwords",
@@ -58,7 +60,7 @@ class NLTKWordPunctTokenizer(Transformer, HasInputCol, HasOutputCol, DefaultPara
         stopwords = set(self.getStopwords())
 
         def f(s):
-            #tokens = nltk.tokenize.wordpunct_tokenize(s)
+            # tokens = nltk.tokenize.wordpunct_tokenize(s)
             tokens = wordpunct_tokenize(s)
             return [t for t in tokens if t.lower() not in stopwords]
 
@@ -74,9 +76,9 @@ class RegexSubstituter(Transformer, HasInputCol, HasOutputCol, DefaultParamsRead
     is searched with regex and a substitution is made where matches are found."""
 
     regexMatchers = Param(Params._dummy(), "regexMatchers", "regexMatchers",
-                      typeConverter=TypeConverters.toListString)
+                          typeConverter=TypeConverters.toListString)
     substitutions = Param(Params._dummy(), "substitutions", "substitutions",
-                      typeConverter=TypeConverters.toListString)
+                          typeConverter=TypeConverters.toListString)
 
     @keyword_only
     def __init__(self, inputCol=None, outputCol=None, regexMatchers=None, substitutions=None):
@@ -85,7 +87,7 @@ class RegexSubstituter(Transformer, HasInputCol, HasOutputCol, DefaultParamsRead
         super(RegexSubstituter, self).__init__()
         self.regexMatchers = Param(self, "regexMatchers", "")
         self.substitutions = Param(self, "substitutions", "")
-        self._setDefault(regexMatchers=[],substitutions=[])
+        self._setDefault(regexMatchers=[], substitutions=[])
         kwargs = self._input_kwargs
         self.setParams(**kwargs)
 
@@ -133,6 +135,7 @@ class RegexSubstituter(Transformer, HasInputCol, HasOutputCol, DefaultParamsRead
 
         return dataset.withColumn(out_col, udf(f, t)(in_col))
 
+
 class TokenSubstituter(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, DefaultParamsWritable,
                        MLReadable, MLWritable):
     """This class expects the input column to have an array of string tokens.  It searches those tokens one by one
@@ -146,7 +149,7 @@ class TokenSubstituter(Transformer, HasInputCol, HasOutputCol, DefaultParamsRead
     @keyword_only
     def __init__(self, inputCol=None, outputCol=None, tokenMatchers=None, substitutions=None):
         module = __import__("__main__")
-        setattr(module, 'TokenSubstituter', RegexSubstituter)
+        setattr(module, 'TokenSubstituter', TokenSubstituter)
         super(TokenSubstituter, self).__init__()
         self.tokenMatchers = Param(self, "tokenMatchers", "")
         self.substitutions = Param(self, "substitutions", "")
@@ -192,7 +195,7 @@ class TokenSubstituter(Transformer, HasInputCol, HasOutputCol, DefaultParamsRead
             returned_array = []
             for tok in token_array:
 
-                #See if we can find the token and if we do swap it for the token in the same position in subsitutions
+                # See if we can find the token and if we do swap it for the token in the same position in subsitutions
                 try:
                     idx = tokenMatchers.index(tok)
                     returned_array.append(substitutions[idx])
@@ -200,6 +203,118 @@ class TokenSubstituter(Transformer, HasInputCol, HasOutputCol, DefaultParamsRead
                     returned_array.append(tok)
 
             return returned_array
+
+        # Select the input column
+        in_col = dataset[self.getInputCol()]
+
+        # Get the name of the output column
+        out_col = self.getOutputCol()
+
+        return dataset.withColumn(out_col, udf(f, t)(in_col))
+
+
+class LevenshteinSubstituter(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, DefaultParamsWritable,
+                             MLReadable, MLWritable):
+    """This class expects the input column to have an array of string tokens.  It searches those tokens one by one
+    and replaces them with the substitutions if a match is found."""
+
+    tokenMatchers = Param(Params._dummy(), "tokenMatchers", "tokenMatchers",
+                          typeConverter=TypeConverters.toListString)
+    levenshteinThresh = Param(Params._dummy(), "levenshteinThresh", "levenshteinThresh", typeConverter=TypeConverters.toInt)
+
+    @keyword_only
+    def __init__(self, inputCol=None, outputCol=None, tokenMatchers=None, levenshteinThresh=None):
+        module = __import__("__main__")
+        setattr(module, 'LevenshteinSubstituter', LevenshteinSubstituter)
+        super(LevenshteinSubstituter, self).__init__()
+        self.tokenMatchers = Param(self, "tokenMatchers", "")
+        self.levenshteinThresh = Param(self, "levenshteinThresh", "")
+        self._setDefault(tokenMatchers=[], levenshteinThresh=None)
+        kwargs = self._input_kwargs
+        self.setParams(**kwargs)
+
+    @keyword_only
+    def setParams(self, inputCol=None, outputCol=None, tokenMatchers=None, levenshteinThresh=None):
+        kwargs = self._input_kwargs
+        return self._set(**kwargs)
+
+    def setTokenMatchers(self, value):
+        self._paramMap[self.tokenMatchers] = value
+        return self
+
+    def getTokenMatchers(self):
+        return self.getOrDefault(self.tokenMatchers)
+
+    def setLevenshteinThresh(self, value):
+        self._paramMap[self.levenshteinThresh] = value
+        return self
+
+    def getLevenshteinThresh(self):
+        return self.getOrDefault(self.levenshteinThresh)
+
+    def _transform(self, dataset):
+        tokenMatchers = self.getTokenMatchers()
+        levenshteinThresh = self.getLevenshteinThresh()
+
+        def _levenshteinDist(s, t):
+            """
+            Determines how different two strings are based on the levenshtein algorithm
+            Algorithm retrieved from
+             https://en.wikibooks.org/wiki/Algorithm_Implementation/Strings/Levenshtein_distance#Python
+            which claims to be based on a version of the algorithm described in the Levenshtein wikipedia article
+
+            :param s: string 1
+            :param t: string 2
+            :return:  levenshtein edit distance
+            """
+
+            if s == t:
+                return 0
+            elif len(s) == 0:
+                return len(t)
+            elif len(t) == 0:
+                return len(s)
+            v0 = [None] * (len(t) + 1)
+            v1 = [None] * (len(t) + 1)
+            for i in range(len(v0)):
+                v0[i] = i
+            for i in range(len(s)):
+                v1[0] = i + 1
+                for j in range(len(t)):
+                    cost = 0 if s[i] == t[j] else 1
+                    v1[j + 1] = min(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost)
+                for j in range(len(v0)):
+                    v0[j] = v1[j]
+
+            return v1[len(t)]
+
+        def _first_token_within_edit_distance(original_token, matcher_tokens, edit_dist_thresh):
+            """Loops through the token in the matcher token list and if it finds one within the edit distance, it
+            returns it"""
+            token_within_edit_dist = None
+            for matcher_token in matcher_tokens:
+                if _levenshteinDist(original_token, matcher_token) <= edit_dist_thresh:
+                    return matcher_token
+
+            return token_within_edit_dist
+
+        # user defined function to loop through each of the substitutions and apply
+        # them to the passed text
+        t = ArrayType(StringType())
+        def f(original_token_array):
+            # Cycle through the tokens in the passed column cell one by one
+            # If the edit distance between the token and tokenMatcher token is below the edit distance
+            # threshold then swap the token with the tokenMatcher
+            # threshold then swap it out
+            updated_token_list = []
+            for orginal_tok in original_token_array:
+                token_within_edit_dist = _first_token_within_edit_distance(orginal_tok, tokenMatchers, levenshteinThresh)
+                if token_within_edit_dist:
+                    updated_token_list.append(token_within_edit_dist)
+                else:
+                    updated_token_list.append(orginal_tok)
+
+            return updated_token_list
 
         # Select the input column
         in_col = dataset[self.getInputCol()]
