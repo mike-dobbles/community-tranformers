@@ -1,4 +1,5 @@
-import nltk
+#import nltk
+from nltk.tokenize import sent_tokenize, wordpunct_tokenize
 from pyspark import keyword_only  ## < 2.0 -> pyspark.ml.util.keyword_only
 from pyspark.ml import Transformer
 from pyspark.ml.param.shared import HasInputCol, HasOutputCol, Param, Params, TypeConverters
@@ -7,6 +8,7 @@ from pyspark.ml.util import DefaultParamsReadable, DefaultParamsWritable, JavaML
 from pyspark.sql.functions import udf
 from pyspark.sql.types import ArrayType, StringType
 import re
+from pyspark.sql import functions as F
 
 # Credits https://stackoverflow.com/a/52467470
 # by https://stackoverflow.com/users/234944/benjamin-manns
@@ -56,7 +58,8 @@ class NLTKWordPunctTokenizer(Transformer, HasInputCol, HasOutputCol, DefaultPara
         stopwords = set(self.getStopwords())
 
         def f(s):
-            tokens = nltk.tokenize.wordpunct_tokenize(s)
+            #tokens = nltk.tokenize.wordpunct_tokenize(s)
+            tokens = wordpunct_tokenize(s)
             return [t for t in tokens if t.lower() not in stopwords]
 
         t = ArrayType(StringType())
@@ -205,3 +208,32 @@ class TokenSubstituter(Transformer, HasInputCol, HasOutputCol, DefaultParamsRead
         out_col = self.getOutputCol()
 
         return dataset.withColumn(out_col, udf(f, t)(in_col))
+
+
+class SentenceSplitter(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, DefaultParamsWritable, MLReadable,
+                       MLWritable):
+
+    @keyword_only
+    def __init__(self, inputCol=None, outputCol=None):
+        module = __import__("__main__")
+        setattr(module, 'SentenceSplitter', SentenceSplitter)
+        super(SentenceSplitter, self).__init__()
+        kwargs = self._input_kwargs
+        self.setParams(**kwargs)
+
+    @keyword_only
+    def setParams(self, inputCol=None, outputCol=None):
+        kwargs = self._input_kwargs
+        return self._set(**kwargs)
+
+    def _transform(self, dataset):
+        # User defined function to actually split the text
+        text2sents = udf(lambda text: sent_tokenize(text), ArrayType(StringType()))
+
+        # Select the input column
+        in_col = dataset[self.getInputCol()]
+
+        # Get the name of the output column
+        out_col = self.getOutputCol()
+
+        return dataset.withColumn(out_col, F.explode(text2sents(in_col)))
