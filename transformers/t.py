@@ -1,5 +1,6 @@
 # import nltk
 from nltk.tokenize import sent_tokenize, wordpunct_tokenize
+from nltk.util import ngrams
 from pyspark import keyword_only  ## < 2.0 -> pyspark.ml.util.keyword_only
 from pyspark.ml import Transformer
 from pyspark.ml.param.shared import HasInputCol, HasOutputCol, Param, Params, TypeConverters
@@ -9,6 +10,7 @@ from pyspark.sql.functions import udf
 from pyspark.sql.types import ArrayType, StringType
 import re
 from pyspark.sql import functions as F
+
 
 
 # Credits https://stackoverflow.com/a/52467470
@@ -358,13 +360,13 @@ class GoWordFilter(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable
     """This class expects the input column to have an array of string tokens.  It searches those tokens one by one
     and replaces them with the substitutions if a match is found."""
 
-    tokenMatchers = Param(Params._dummy(), "goWords", "goWords",
+    goWords = Param(Params._dummy(), "goWords", "goWords",
                           typeConverter=TypeConverters.toListString)
 
     @keyword_only
     def __init__(self, inputCol=None, outputCol=None, goWords=None):
         module = __import__("__main__")
-        setattr(module, 'TokenSubstituter', TokenSubstituter)
+        setattr(module, 'GoWordFilter', GoWordFilter)
         super(GoWordFilter, self).__init__()
         self.goWords = Param(self, "goWords", "")
         self._setDefault(goWords=[])
@@ -402,6 +404,68 @@ class GoWordFilter(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable
                     returned_token_array.append(tok)
 
             return returned_token_array
+
+        # Select the input column
+        in_col = dataset[self.getInputCol()]
+
+        # Get the name of the output column
+        out_col = self.getOutputCol()
+
+        return dataset.withColumn(out_col, udf(f, t)(in_col))
+
+class NgramSet(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, DefaultParamsWritable,
+                   MLReadable, MLWritable):
+    """This class converts the tokens in the input column in a ngram set consisting of ngrams from 1-gram to maxN-gram."""
+
+    maxN = Param(Params._dummy(), "maxN", "maxN", typeConverter=TypeConverters.toInt)
+
+    @keyword_only
+    def __init__(self, inputCol=None, outputCol=None, maxN=None):
+        module = __import__("__main__")
+        setattr(module, 'NgramSet', NgramSet)
+        super(NgramSet, self).__init__()
+        self.goWords = Param(self, "maxN", "")
+        self._setDefault(maxN=None)
+        kwargs = self._input_kwargs
+        self.setParams(**kwargs)
+
+    @keyword_only
+    def setParams(self, inputCol=None, outputCol=None, maxN=None):
+        kwargs = self._input_kwargs
+        return self._set(**kwargs)
+
+    def setMaxN(self, value):
+        self._paramMap[self.maxN] = value
+        return self
+
+    def getMaxN(self):
+        return self.getOrDefault(self.maxN)
+
+    def _transform(self, dataset):
+        maxN = self.getMaxN()
+
+
+        def get_ngrams(original_token_array, n):
+            n_grams = ngrams(original_token_array, n)
+            return [' '.join(grams) for grams in n_grams]
+
+        # user defined function to loop through each of the substitutions and apply
+        # them to the passed text
+        t = ArrayType(StringType())
+        def f(original_token_array):
+            # Cycle through the tokens in the passed column cell one by one
+            # If it matches a token in the tokenMatchers array, then swap on that token,
+            # otherwise, leave it alone
+            returned_ngram_array = []
+            for ngram_num in range(1,maxN+1):
+                # If the ngram size is greater than our tokens, we're done
+                if len(original_token_array) < ngram_num:
+                    return
+
+                # Convert the token array into ngrams and add them to the ngram set
+                returned_ngram_array.extend(get_ngrams(original_token_array, ngram_num))
+
+            return returned_ngram_array
 
         # Select the input column
         in_col = dataset[self.getInputCol()]

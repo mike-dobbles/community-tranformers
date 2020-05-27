@@ -282,3 +282,44 @@ def test__GoWordFilter(numbers_dataframe):
 
     # If we make it this far without crashing we pass (plus I'm visually reviewing results)
     assert True
+
+def test__NgramSet(numbers_dataframe):
+
+    # Create the transformer
+    tokenizer = ct.NLTKWordPunctTokenizer(inputCol="text", outputCol="tokens")
+
+    # Create the transformer
+    toksub = ct.NgramSet(inputCol="tokens", outputCol="ngram_set", maxN=5)
+
+    # Create a pipeline from the transformer
+    pipeline = Pipeline(stages=[tokenizer, toksub])
+
+
+    # fit the test data (which also builds the pipeline)
+    model = pipeline.fit(numbers_dataframe)
+
+    # Test the pipeline
+    df_original_transformed = model.transform(numbers_dataframe)
+
+    # Delete any previously save model (if it exists)
+    # (There may be a more elegant way to do this)
+    if os.path.exists("unit_test_model"):
+        os.system("rm -rf unit_test_model")
+
+    # Log the model and performance
+    save_model(model, "unit_test_model")
+    retrieved_model = load_model("unit_test_model")
+    df_retreived_transformed = retrieved_model.transform(numbers_dataframe)
+
+    # Assert the retrieved model give the same results as the saved model
+    rows_in_common = df_original_transformed.intersect(df_retreived_transformed).count()
+    assert (df_original_transformed.count() == rows_in_common)
+
+    # Print results for visual inspection
+    print("\n")
+    print("test__NgramSet: should see a set of 1-5 ngram set")
+    df_retreived_transformed.show(truncate=False)
+
+    # If we make it this far without crashing we pass (plus I'm visually reviewing results)
+    assert True
+
