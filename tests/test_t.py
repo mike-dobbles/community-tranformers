@@ -5,7 +5,7 @@ from mlflow.spark import save_model, load_model
 from pyspark.ml import Pipeline
 import os
 import pandas as pd
-
+from nltk.util import ngrams
 
 # This runs before the tests and creates objects that can be used by the tests
 @pytest.fixture
@@ -288,11 +288,15 @@ def test__NgramSet(numbers_dataframe):
     # Create the transformer
     tokenizer = ct.NLTKWordPunctTokenizer(inputCol="text", outputCol="tokens")
 
+    # Filter to go words
+    goWords= ['two','three','four','five']
+    gofilt = ct.GoWordFilter(inputCol="tokens", outputCol="go_word_filtered_tokens", goWords=goWords)
+
     # Create the transformer
-    toksub = ct.NgramSet(inputCol="tokens", outputCol="ngram_set", maxN=5)
+    ngrams = ct.NgramSet(inputCol="go_word_filtered_tokens", outputCol="ngram_set", maxN=5)
 
     # Create a pipeline from the transformer
-    pipeline = Pipeline(stages=[tokenizer, toksub])
+    pipeline = Pipeline(stages=[tokenizer, gofilt, ngrams])
 
 
     # fit the test data (which also builds the pipeline)
@@ -323,3 +327,23 @@ def test__NgramSet(numbers_dataframe):
     # If we make it this far without crashing we pass (plus I'm visually reviewing results)
     assert True
 
+def test__ngram_udf():
+    maxN = 5
+    original_token_array =['two', 'three', 'four', 'five']
+
+    def f(original_token_array):
+
+        returned_ngram_array = []
+
+        # Use the nltk utility to create a range of ngrams
+        adjusted_max = min(len(original_token_array),maxN)
+        for n in range(1,min(len(original_token_array),maxN)):
+            n_grams = ngrams(original_token_array, n)
+            returned_ngram_array.extend([' '.join(grams) for grams in n_grams])
+        return returned_ngram_array
+
+    ngram_array = f(original_token_array)
+
+
+    print(ngram_array)
+    assert True

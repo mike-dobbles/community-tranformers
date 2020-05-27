@@ -444,27 +444,15 @@ class NgramSet(Transformer, HasInputCol, HasOutputCol, DefaultParamsReadable, De
     def _transform(self, dataset):
         maxN = self.getMaxN()
 
-
-        def get_ngrams(original_token_array, n):
-            n_grams = ngrams(original_token_array, n)
-            return [' '.join(grams) for grams in n_grams]
-
-        # user defined function to loop through each of the substitutions and apply
-        # them to the passed text
+        # user defined function to create a set of ngrams
         t = ArrayType(StringType())
         def f(original_token_array):
-            # Cycle through the tokens in the passed column cell one by one
-            # If it matches a token in the tokenMatchers array, then swap on that token,
-            # otherwise, leave it alone
             returned_ngram_array = []
-            for ngram_num in range(1,maxN+1):
-                # If the ngram size is greater than our tokens, we're done
-                if len(original_token_array) < ngram_num:
-                    return
-
-                # Convert the token array into ngrams and add them to the ngram set
-                returned_ngram_array.extend(get_ngrams(original_token_array, ngram_num))
-
+            # Use the nltk utility to create a range of ngrams
+            adjusted_max = min(len(original_token_array), maxN)
+            for n in range(1, min(len(original_token_array), maxN)):
+                n_grams = ngrams(original_token_array, n)
+                returned_ngram_array.extend([' '.join(grams) for grams in n_grams])
             return returned_ngram_array
 
         # Select the input column
